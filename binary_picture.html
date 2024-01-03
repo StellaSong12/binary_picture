@@ -1,0 +1,148 @@
+<html>
+ 
+<head>
+    <meta charset="utf-8">
+    <title></title>
+</head>
+ 
+<body onload="showImg()">
+    <meta name="viewport" content="width=device-width, minimum-scale=0.1">
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <div id = "preview"></div>
+    <input type="file" id="input" onchange="handleFiles(this.files)">
+    <div style="margin: 10px;">
+        <span>二值化阈值：</span>
+        <span id="threshold">148</span>
+    </div>
+    <div style="display: flex;margin: 20px 5px;">
+        <span style="flex: 1 0 65px;">0 - 255</span>
+        <input type="range" value="0" onchange="showImg(this.value)" id="range" max="255" min="0" step="1" style="flex: 1 1 100%;">
+    </div>
+    <canvas id="canvas" onclick="showImg()" width="300" height="200"></canvas>
+    <script>
+        var canvas = document.getElementById('canvas');
+        var img = document.getElementById('img');
+        var input = document.getElementById('range');
+        var thresholdEle = document.getElementById('threshold');
+        var c = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+ 
+        function showImg(threshold) {
+            img = document.getElementById('img');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            console.log(img)
+            c.drawImage(img, 0, 0, canvas.width, canvas.height);
+            var imgData = c.getImageData(0, 0, canvas.width, canvas.height);
+            var index = threshold ? threshold : OTSUAlgorithm(imgData);//阈值
+            thresholdEle.innerHTML = index
+            for (var i = 0; i < imgData.data.length; i += 4) {
+                var R = imgData.data[i]; //R(0-255)
+                var G = imgData.data[i + 1]; //G(0-255)
+                var B = imgData.data[i + 2]; //B(0-255)
+                var Alpha = imgData.data[i + 3]; //Alpha(0-255)
+                var sum = (R + G + B) / 3;
+                if (sum > index) {
+                    imgData.data[i] = 255;
+                    imgData.data[i + 1] = 255;
+                    imgData.data[i + 2] = 255;
+                    imgData.data[i + 3] = Alpha;
+                } else {
+                    imgData.data[i] = 0;
+                    imgData.data[i + 1] = 0;
+                    imgData.data[i + 2] = 0;
+                    imgData.data[i + 3] = Alpha;
+                }
+            }
+            c.putImageData(imgData, 0, 0);
+        }
+ 
+        //一维OTSU图像处理算法
+        function OTSUAlgorithm(canvasData) {
+            var m_pFstdHistogram = new Array();//表示灰度值的分布点概率
+            var m_pFGrayAccu = new Array();//其中每一个值等于m_pFstdHistogram中从0到当前下标值的和
+            var m_pFGrayAve = new Array();//其中每一值等于m_pFstdHistogram中从0到当前指定下标值*对应的下标之和
+            var m_pAverage = 0;//值为m_pFstdHistogram【256】中每一点的分布概率*当前下标之和
+            var m_pHistogram = new Array();//灰度直方图
+            var i, j;
+            var temp = 0, fMax = 0;//定义一个临时变量和一个最大类间方差的值
+            var nThresh = 0;//最优阀值
+            //初始化各项参数
+            for (i = 0; i < 256; i++) {
+                m_pFstdHistogram[i] = 0;
+                m_pFGrayAccu[i] = 0;
+                m_pFGrayAve[i] = 0;
+                m_pHistogram[i] = 0;
+            }
+            //获取图像的像素
+            var pixels = canvasData.data;
+            //下面统计图像的灰度分布信息
+            for (i = 0; i < pixels.length; i += 4) {
+                //获取r的像素值，因为灰度图像，r=g=b，所以取第一个即可
+                var r = pixels[i];
+                m_pHistogram[r]++;
+            }
+            //下面计算每一个灰度点在图像中出现的概率
+            var size = canvasData.width * canvasData.height;
+            for (i = 0; i < 256; i++) {
+                m_pFstdHistogram[i] = m_pHistogram[i] / size;
+            }
+            //下面开始计算m_pFGrayAccu和m_pFGrayAve和m_pAverage的值
+            for (i = 0; i < 256; i++) {
+                for (j = 0; j <= i; j++) {
+                    //计算m_pFGaryAccu[256]
+                    m_pFGrayAccu[i] += m_pFstdHistogram[j];
+                    //计算m_pFGrayAve[256]
+                    m_pFGrayAve[i] += j * m_pFstdHistogram[j];
+                }
+                //计算平均值
+                m_pAverage += i * m_pFstdHistogram[i];
+            }
+            //下面开始就算OSTU的值，从0-255个值中分别计算ostu并寻找出最大值作为分割阀值
+            for (i = 0; i < 256; i++) {
+                temp = (m_pAverage * m_pFGrayAccu[i] - m_pFGrayAve[i])
+                    * (m_pAverage * m_pFGrayAccu[i] - m_pFGrayAve[i])
+                    / (m_pFGrayAccu[i] * (1 - m_pFGrayAccu[i]));
+                if (temp > fMax) {
+                    fMax = temp;
+                    nThresh = i;
+                }
+            }
+            return nThresh
+        }	
+
+        function handleFiles(files) {
+            var preview = document.getElementById('preview');
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i];
+                var imageType = /^image\//;
+
+                if ( !imageType.test(file.type) ) {
+                    continue;
+                }
+
+                var img = document.createElement("img");
+                img.id = "img"
+                img.classList.add("obj");
+                img.file = file;
+                // 假设 "preview" 是将要展示图片的 div
+                while (preview.firstChild) {
+                    preview.removeChild(preview.firstChild);
+                }
+                preview.appendChild(img);
+
+                var reader = new FileReader();
+                reader.onload = (function(aImg) {
+                return function(e) {
+                    aImg.src = e.target.result;
+                };
+                })(img);
+                reader.readAsDataURL(file);
+            }
+        }
+    </script>
+ 
+</body>
+ 
+</html>
